@@ -1,9 +1,13 @@
 import { join, resolve, relative, dirname } from 'path';
-import { readdir, stat, readFile, writeFile, unlink, mkdir, access } from 'node:fs/promises';
+import { readdir, stat, lstat, readFile, writeFile, unlink, mkdir, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { FrontmatterHandler } from './frontmatter.js';
 import { PathFilter } from './pathfilter.js';
 import { generateObsidianUri } from './uri.js';
+// Security constants
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_DIR_DEPTH = 10; // Maximum directory depth
+const MAX_REPLACEMENT_SIZE = 1024 * 1024; // 1MB for patch operations
 export class FileSystemService {
     vaultPath;
     frontmatterHandler;
@@ -21,6 +25,11 @@ export class FileSystemService {
         }
         // Trim whitespace from path
         relativePath = relativePath.trim();
+        // Check directory depth
+        const depth = relativePath.split('/').filter(part => part && part !== '.').length;
+        if (depth > MAX_DIR_DEPTH) {
+            throw new Error(`Directory depth exceeds limit (${MAX_DIR_DEPTH} levels). Path: ${relativePath}`);
+        }
         // Normalize and resolve the path within the vault
         const normalizedPath = relativePath.startsWith('/')
             ? relativePath.slice(1)
@@ -33,11 +42,31 @@ export class FileSystemService {
         }
         return fullPath;
     }
+    /**
+     * Security check: Ensure path is not a symlink
+     * @throws Error if path is a symlink
+     */
+    async checkSymlink(fullPath) {
+        try {
+            const stats = await lstat(fullPath);
+            if (stats.isSymbolicLink()) {
+                throw new Error('Symlinks are not allowed for security reasons');
+            }
+        }
+        catch (error) {
+            // If file doesn't exist (ENOENT), that's fine - we're checking before operations
+            if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
+                throw error;
+            }
+        }
+    }
     async readNote(path) {
         const fullPath = this.resolvePath(path);
         if (!this.pathFilter.isAllowed(path)) {
             throw new Error(`Access denied: ${path}. This path is restricted (system files like .obsidian, .git, and dotfiles are not accessible).`);
         }
+        // Security: Check for symlinks
+        await this.checkSymlink(fullPath);
         // Check if the path is a directory first
         const isDir = await this.isDirectory(path);
         if (isDir) {
@@ -67,6 +96,12 @@ export class FileSystemService {
         const fullPath = this.resolvePath(path);
         if (!this.pathFilter.isAllowed(path)) {
             throw new Error(`Access denied: ${path}. This path is restricted (system files like .obsidian, .git, and dotfiles are not accessible).`);
+        }
+        // Security: Check for symlinks
+        await this.checkSymlink(fullPath);
+        // Security: Check content size
+        if (content.length > MAX_FILE_SIZE) {
+            throw new Error(`Content size exceeds limit (${MAX_FILE_SIZE} bytes / ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB)`);
         }
         // Validate frontmatter if provided
         if (frontmatter) {
@@ -133,6 +168,14 @@ export class FileSystemService {
                 message: `Access denied: ${path}. This path is restricted (system files like .obsidian, .git, and dotfiles are not accessible).`
             };
         }
+        // Security: Check replacement string size
+        if (newString.length > MAX_REPLACEMENT_SIZE) {
+            return {
+                success: false,
+                path,
+                message: `Replacement string size exceeds limit (${MAX_REPLACEMENT_SIZE} bytes / ${Math.floor(MAX_REPLACEMENT_SIZE / 1024)}KB)`
+            };
+        }
         // Validate that strings are not empty
         if (!oldString || oldString.trim() === '') {
             return {
@@ -157,6 +200,9 @@ export class FileSystemService {
             };
         }
         try {
+            // Security: Check for symlinks before reading
+            const fullPath = this.resolvePath(path);
+            await this.checkSymlink(fullPath);
             // Read the existing note
             const note = await this.readNote(path);
             // Get the full content with frontmatter
@@ -185,7 +231,6 @@ export class FileSystemService {
                 ? fullContent.split(oldString).join(newString)
                 : fullContent.replace(oldString, newString);
             // Write the updated content
-            const fullPath = this.resolvePath(path);
             await writeFile(fullPath, updatedContent, 'utf-8');
             return {
                 success: true,
@@ -288,6 +333,8 @@ export class FileSystemService {
             };
         }
         try {
+            // Security: Check for symlinks
+            await this.checkSymlink(fullPath);
             // Check if it's a directory first (can't delete directories with this method)
             const isDir = await this.isDirectory(path);
             if (isDir) {
@@ -350,6 +397,9 @@ export class FileSystemService {
         const oldFullPath = this.resolvePath(oldPath);
         const newFullPath = this.resolvePath(newPath);
         try {
+            // Security: Check for symlinks on source and destination
+            await this.checkSymlink(oldFullPath);
+            await this.checkSymlink(newFullPath);
             // Read source content (will throw ENOENT if not found)
             let content;
             try {

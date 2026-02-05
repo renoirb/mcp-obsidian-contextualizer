@@ -1,10 +1,15 @@
 import { join, resolve, relative, dirname } from 'path';
-import { readdir, stat, readFile, writeFile, unlink, mkdir, access } from 'node:fs/promises';
+import { readdir, stat, lstat, readFile, writeFile, unlink, mkdir, access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { FrontmatterHandler } from './frontmatter.js';
 import { PathFilter } from './pathfilter.js';
 import { generateObsidianUri } from './uri.js';
 import type { ParsedNote, DirectoryListing, NoteWriteParams, DeleteNoteParams, DeleteResult, MoveNoteParams, MoveResult, BatchReadParams, BatchReadResult, UpdateFrontmatterParams, NoteInfo, TagManagementParams, TagManagementResult, PatchNoteParams, PatchNoteResult, VaultStats } from './types.js';
+
+// Security constants
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const MAX_DIR_DEPTH = 10; // Maximum directory depth
+const MAX_REPLACEMENT_SIZE = 1024 * 1024; // 1MB for patch operations
 
 export class FileSystemService {
   private frontmatterHandler: FrontmatterHandler;
@@ -29,6 +34,12 @@ export class FileSystemService {
     // Trim whitespace from path
     relativePath = relativePath.trim();
 
+    // Check directory depth
+    const depth = relativePath.split('/').filter(part => part && part !== '.').length;
+    if (depth > MAX_DIR_DEPTH) {
+      throw new Error(`Directory depth exceeds limit (${MAX_DIR_DEPTH} levels). Path: ${relativePath}`);
+    }
+
     // Normalize and resolve the path within the vault
     const normalizedPath = relativePath.startsWith('/')
       ? relativePath.slice(1)
@@ -45,12 +56,33 @@ export class FileSystemService {
     return fullPath;
   }
 
+  /**
+   * Security check: Ensure path is not a symlink
+   * @throws Error if path is a symlink
+   */
+  private async checkSymlink(fullPath: string): Promise<void> {
+    try {
+      const stats = await lstat(fullPath);
+      if (stats.isSymbolicLink()) {
+        throw new Error('Symlinks are not allowed for security reasons');
+      }
+    } catch (error) {
+      // If file doesn't exist (ENOENT), that's fine - we're checking before operations
+      if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
   async readNote(path: string): Promise<ParsedNote> {
     const fullPath = this.resolvePath(path);
 
     if (!this.pathFilter.isAllowed(path)) {
       throw new Error(`Access denied: ${path}. This path is restricted (system files like .obsidian, .git, and dotfiles are not accessible).`);
     }
+
+    // Security: Check for symlinks
+    await this.checkSymlink(fullPath);
 
     // Check if the path is a directory first
     const isDir = await this.isDirectory(path);
@@ -83,6 +115,14 @@ export class FileSystemService {
 
     if (!this.pathFilter.isAllowed(path)) {
       throw new Error(`Access denied: ${path}. This path is restricted (system files like .obsidian, .git, and dotfiles are not accessible).`);
+    }
+
+    // Security: Check for symlinks
+    await this.checkSymlink(fullPath);
+
+    // Security: Check content size
+    if (content.length > MAX_FILE_SIZE) {
+      throw new Error(`Content size exceeds limit (${MAX_FILE_SIZE} bytes / ${Math.floor(MAX_FILE_SIZE / 1024 / 1024)}MB)`);
     }
 
     // Validate frontmatter if provided
@@ -160,6 +200,15 @@ export class FileSystemService {
       };
     }
 
+    // Security: Check replacement string size
+    if (newString.length > MAX_REPLACEMENT_SIZE) {
+      return {
+        success: false,
+        path,
+        message: `Replacement string size exceeds limit (${MAX_REPLACEMENT_SIZE} bytes / ${Math.floor(MAX_REPLACEMENT_SIZE / 1024)}KB)`
+      };
+    }
+
     // Validate that strings are not empty
     if (!oldString || oldString.trim() === '') {
       return {
@@ -187,6 +236,10 @@ export class FileSystemService {
     }
 
     try {
+      // Security: Check for symlinks before reading
+      const fullPath = this.resolvePath(path);
+      await this.checkSymlink(fullPath);
+
       // Read the existing note
       const note = await this.readNote(path);
 
@@ -221,7 +274,6 @@ export class FileSystemService {
         : fullContent.replace(oldString, newString);
 
       // Write the updated content
-      const fullPath = this.resolvePath(path);
       await writeFile(fullPath, updatedContent, 'utf-8');
 
       return {
@@ -338,6 +390,9 @@ export class FileSystemService {
     }
 
     try {
+      // Security: Check for symlinks
+      await this.checkSymlink(fullPath);
+
       // Check if it's a directory first (can't delete directories with this method)
       const isDir = await this.isDirectory(path);
       if (isDir) {
@@ -407,6 +462,10 @@ export class FileSystemService {
     const newFullPath = this.resolvePath(newPath);
 
     try {
+      // Security: Check for symlinks on source and destination
+      await this.checkSymlink(oldFullPath);
+      await this.checkSymlink(newFullPath);
+
       // Read source content (will throw ENOENT if not found)
       let content: string;
       try {

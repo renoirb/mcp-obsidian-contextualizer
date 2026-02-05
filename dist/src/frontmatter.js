@@ -83,6 +83,11 @@ export class FrontmatterHandler {
                     result.errors.push(`Non-string keys are not allowed: ${key}`);
                     result.isValid = false;
                 }
+                // Security: Check for prototype pollution vectors
+                if (['__proto__', 'constructor', 'prototype'].includes(key)) {
+                    result.errors.push(`Forbidden property name for security reasons: ${key}`);
+                    result.isValid = false;
+                }
                 this.checkForProblematicValues(value, result, currentPath);
             }
         }
