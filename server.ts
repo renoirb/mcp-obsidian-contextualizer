@@ -10,7 +10,7 @@ import { FileSystemService } from "./src/filesystem.js";
 import { FrontmatterHandler } from "./src/frontmatter.js";
 import { PathFilter } from "./src/pathfilter.js";
 import { SearchService } from "./src/search.js";
-import { extractFragment } from "./src/from-package-renoirb-obsidian-markdown-utils/index.js";
+import { parseWikiLink, resolveWikiLink } from "./src/from-package-renoirb-obsidian-markdown-utils/index.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -666,71 +666,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "wiki_link": {
-        // Strip [[ ]] brackets and |display text if present
-        let ref = (trimmedArgs.ref || '')
-          .replace(/^\[\[/, '')
-          .replace(/\]\]$/, '')
-          .replace(/\|.*$/, '')
-          .trim();
-
-        // Find the file by ObsidianBasename (always appends .md)
-        const resolvedPath = await fileSystem.findByBasename(ref);
-
-        // Read the note
+        const parsed = parseWikiLink(trimmedArgs.ref || '');
+        const fragment = trimmedArgs.fragment || parsed.fragment;
+        const resolvedPath = await fileSystem.findByBasename(parsed.obsidianBasename);
         const note = await fileSystem.readNote(resolvedPath);
         const indent = trimmedArgs.prettyPrint ? 2 : undefined;
 
-        // If no fragment requested, return full content
-        if (!trimmedArgs.fragment) {
+        const resolution = resolveWikiLink(note.content, fragment);
+
+        if (resolution.type === 'full') {
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  path: resolvedPath,
-                  fm: note.frontmatter,
-                  content: note.content,
-                }, null, indent)
-              }
-            ]
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                path: resolvedPath,
+                fm: note.frontmatter,
+                content: resolution.content,
+              }, null, indent)
+            }]
           };
         }
 
-        // Extract the requested fragment
-        const extraction = extractFragment(note.content, trimmedArgs.fragment);
+        const { extraction } = resolution;
 
         if (!extraction.found) {
           return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  path: resolvedPath,
-                  ...extraction,
-                }, null, indent)
-              }
-            ],
+            content: [{
+              type: "text",
+              text: JSON.stringify({ path: resolvedPath, ...extraction }, null, indent)
+            }],
             isError: true
           };
         }
 
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                path: resolvedPath,
-                fm: note.frontmatter,
-                content: extraction.content,
-                section: {
-                  heading: extraction.heading,
-                  level: extraction.level,
-                  startLine: extraction.startLine,
-                  endLine: extraction.endLine,
-                },
-              }, null, indent)
-            }
-          ]
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              path: resolvedPath,
+              fm: note.frontmatter,
+              content: extraction.content,
+              section: {
+                heading: extraction.heading,
+                level: extraction.level,
+                startLine: extraction.startLine,
+                endLine: extraction.endLine,
+              },
+            }, null, indent)
+          }]
         };
       }
 
