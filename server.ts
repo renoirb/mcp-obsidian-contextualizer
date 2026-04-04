@@ -10,6 +10,7 @@ import { FileSystemService } from "./src/filesystem.js";
 import { FrontmatterHandler } from "./src/frontmatter.js";
 import { PathFilter } from "./src/pathfilter.js";
 import { SearchService } from "./src/search.js";
+import { extractSection } from "./src/fragment/index.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -385,6 +386,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           }
         }
+      },
+      {
+        name: "resolve_ref",
+        description: "Resolve an Obsidian-style reference by basename, optionally extracting a specific section. Searches the entire vault for an exact basename match (like [[Document Name]]). With a fragment, returns only the matching section (#Heading or #^block-id). Content is returned bare — ready for direct use in context.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            ref: {
+              type: "string",
+              description: "Document basename (e.g. 'LLM-Context-Programming-Focus'). The .md extension is optional. Brackets are stripped if present."
+            },
+            fragment: {
+              type: "string",
+              description: "Optional heading or block-id to extract (e.g. '#Summary', '#^blockId', 'Opportunistic Legibility in Changed Chunks'). Returns only that section instead of the full document."
+            },
+            prettyPrint: {
+              type: "boolean",
+              description: "Format JSON response with indentation (default: false)",
+              default: false
+            }
+          },
+          required: ["ref"]
+        }
       }
     ]
   };
@@ -635,6 +659,71 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 folders: stats.totalFolders,
                 size: stats.totalSize,
                 recent: stats.recentlyModified
+              }, null, indent)
+            }
+          ]
+        };
+      }
+
+      case "resolve_ref": {
+        // Strip [[ ]] brackets if present
+        let ref = (trimmedArgs.ref || '').replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
+
+        // Find the file by basename
+        const resolvedPath = await fileSystem.findByBasename(ref);
+
+        // Read the note
+        const note = await fileSystem.readNote(resolvedPath);
+        const indent = trimmedArgs.prettyPrint ? 2 : undefined;
+
+        // If no fragment requested, return full content
+        if (!trimmedArgs.fragment) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  path: resolvedPath,
+                  fm: note.frontmatter,
+                  content: note.content,
+                }, null, indent)
+              }
+            ]
+          };
+        }
+
+        // Extract the requested section
+        const extraction = extractSection(note.content, trimmedArgs.fragment);
+
+        if (!extraction.found) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  path: resolvedPath,
+                  ...extraction,
+                }, null, indent)
+              }
+            ],
+            isError: true
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                path: resolvedPath,
+                fm: note.frontmatter,
+                content: extraction.content,
+                section: {
+                  heading: extraction.heading,
+                  level: extraction.level,
+                  startLine: extraction.startLine,
+                  endLine: extraction.endLine,
+                },
               }, null, indent)
             }
           ]

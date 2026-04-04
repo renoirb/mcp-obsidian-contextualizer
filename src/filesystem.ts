@@ -735,6 +735,55 @@ export class FileSystemService {
     }
   }
 
+  /**
+   * Find a file by its basename (filename without path).
+   * Returns the relative path if exactly one match is found.
+   * Throws if zero or multiple matches are found.
+   */
+  async findByBasename(basename: string): Promise<string> {
+    const normalizedName = basename.endsWith('.md') ? basename : `${basename}.md`;
+    const matches: string[] = [];
+
+    const scan = async (dirPath: string, relativePath: string = ''): Promise<void> => {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const entryRelativePath = relativePath
+          ? `${relativePath}/${entry.name}`
+          : entry.name;
+
+        if (!this.pathFilter.isAllowed(entryRelativePath)) {
+          continue;
+        }
+
+        if (entry.isDirectory()) {
+          if (!this.pathFilter.isAllowed(`${entryRelativePath}/test.md`)) {
+            continue;
+          }
+          await scan(join(dirPath, entry.name), entryRelativePath);
+        } else if (entry.isFile() && entry.name === normalizedName) {
+          matches.push(entryRelativePath);
+        }
+      }
+    };
+
+    await scan(this.vaultPath);
+
+    if (matches.length === 0) {
+      throw new Error(
+        `No file found with basename "${basename}". Use search_notes or list_directory to find the correct name.`,
+      );
+    }
+
+    if (matches.length > 1) {
+      throw new Error(
+        `Ambiguous basename "${basename}" — found ${matches.length} files: ${matches.join(', ')}. Provide the full path instead.`,
+      );
+    }
+
+    return matches[0] as string;
+  }
+
   getVaultPath(): string {
     return this.vaultPath;
   }
