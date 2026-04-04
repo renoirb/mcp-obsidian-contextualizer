@@ -634,12 +634,18 @@ export class FileSystemService {
         }
     }
     /**
-     * Find a file by its basename (filename without path).
-     * Returns the relative path if exactly one match is found.
-     * Throws if zero or multiple matches are found.
+     * Find a file by its ObsidianBasename — the name as it appears inside [[ ]] wiki links.
+     *
+     * Always appends `.md` to form the filesystem filename. Never checks for an existing
+     * `.md` suffix — in Obsidian, [[document.md]] refers to `document.md.md` on disk.
+     * The ObsidianBasename is the full filename minus the filesystem extension.
+     *
+     * @param obsidianBasename - The document name as used in wiki links (e.g., 'My Document', 'Module-Foo.ts')
+     * @returns The relative path within the vault
+     * @throws When no file matches, or when multiple files share the same basename (ambiguous)
      */
-    async findByBasename(basename) {
-        const normalizedName = basename.endsWith('.md') ? basename : `${basename}.md`;
+    async findByBasename(obsidianBasename) {
+        const normalizedName = `${obsidianBasename}.md`;
         const matches = [];
         const scan = async (dirPath, relativePath = '') => {
             const entries = await readdir(dirPath, { withFileTypes: true });
@@ -663,10 +669,10 @@ export class FileSystemService {
         };
         await scan(this.vaultPath);
         if (matches.length === 0) {
-            throw new Error(`No file found with basename "${basename}". Use search_notes or list_directory to find the correct name.`);
+            throw new Error(`No file found with basename "${obsidianBasename}". Use search_notes or list_directory to find the correct name.`);
         }
         if (matches.length > 1) {
-            throw new Error(`Ambiguous basename "${basename}" — found ${matches.length} files: ${matches.join(', ')}. Provide the full path instead.`);
+            throw new Error(`Ambiguous basename "${obsidianBasename}" — found ${matches.length} files: ${matches.join(', ')}. Provide the full path instead.`);
         }
         return matches[0];
     }

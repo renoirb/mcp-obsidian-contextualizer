@@ -1,11 +1,11 @@
-export { extractSection } from './extract-section.js'
+export { extractFragment } from './extract-fragment.js'
 export { parseFragment } from './parse-fragment.js'
 export { scanHeadings } from './scan-headings.js'
 export { scanBlockIds } from './scan-block-ids.js'
 
 export type {
-  FragmentType,
-  ParsedFragment,
+  ObsidianLinkFragmentType,
+  ParsedFragmentResult,
   HeadingInfo,
   BlockIdInfo,
   ExtractionSuccess,

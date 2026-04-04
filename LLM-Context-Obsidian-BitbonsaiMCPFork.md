@@ -12,6 +12,7 @@ created: 2026-03-11
 modified: 2026-03-11
 related:
   - "[[RENOIRB-PAI-OBSIDIAN-SYNC-PROBLEM]]"
+  - "[[LLM-Context-ObsidianMCPAL-BitbonsaiMCPFork]]"
 ---
 
 # Context for Obsidian BitBonsai MCP Fork

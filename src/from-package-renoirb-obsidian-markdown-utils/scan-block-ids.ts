@@ -3,25 +3,32 @@ import type { BlockIdInfo } from './types.js'
 const BLOCK_ID_RE = /\^([a-zA-Z0-9_-]+)\s*$/
 
 /**
- * Scan markdown content for Obsidian block ID anchors (^identifier).
- * Returns the containing block for each anchor found.
+ * Scan markdown content for Obsidian block-id anchors (^identifier)
+ * and identify the containing block for each.
  *
  * Block boundary rules:
  * - Paragraphs: delimited by blank lines
  * - List items: the full list (including continuation lines)
  * - Code fences: from opening ``` to closing ```
- * - Callouts: from > [!type] through consecutive > prefixed lines
- * - Tables: consecutive lines starting with |
+ * - Callouts: from `> [!type]` through consecutive `>` prefixed lines
+ * - Tables: consecutive lines starting with `|`
  *
- * The ^block-id anchor appears at the end of the last line of the block.
+ * The `^block-id` anchor appears at the end of the last line of the block.
  * Lines are 1-indexed.
+ *
+ * @param markdownText - Full markdown content (without frontmatter)
+ * @returns Array of block-id info with containing block boundaries
+ *
+ * @see {@link BlockIdInfo}
  */
-export function scanBlockIds(content: string): BlockIdInfo[] {
-  if (!content.trim()) {
+export const scanBlockIds = (
+  markdownText: string,
+): BlockIdInfo[] => {
+  if (!markdownText.trim()) {
     return []
   }
 
-  const lines = content.split('\n')
+  const lines = markdownText.split('\n')
   const results: BlockIdInfo[] = []
 
   for (let i = 0; i < lines.length; i++) {
@@ -45,7 +52,17 @@ export function scanBlockIds(content: string): BlockIdInfo[] {
   return results
 }
 
-function findBlockStart(lines: string[], anchorIndex: number): number {
+/**
+ * Walk backwards from the anchor line to find the start of the containing block.
+ *
+ * @param lines - All lines of the document
+ * @param anchorIndex - 0-indexed position of the line carrying the ^anchor
+ * @returns 1-indexed start line of the containing block
+ */
+const findBlockStart = (
+  lines: string[],
+  anchorIndex: number,
+): number => {
   const anchorLine = lines[anchorIndex] as string
 
   if (isClosingCodeFence(anchorLine, lines, anchorIndex)) {
@@ -88,7 +105,11 @@ function findBlockStart(lines: string[], anchorIndex: number): number {
   return findParagraphStart(lines, anchorIndex)
 }
 
-function isClosingCodeFence(line: string, lines: string[], index: number): boolean {
+const isClosingCodeFence = (
+  line: string,
+  lines: string[],
+  index: number,
+): boolean => {
   if (/^```/.test(line)) {
     let fenceCount = 0
     for (let i = 0; i < index; i++) {
@@ -101,7 +122,10 @@ function isClosingCodeFence(line: string, lines: string[], index: number): boole
   return false
 }
 
-function findListStart(lines: string[], anchorIndex: number): number {
+const findListStart = (
+  lines: string[],
+  anchorIndex: number,
+): number => {
   let start = anchorIndex
   for (let i = anchorIndex - 1; i >= 0; i--) {
     const line = lines[i] as string
@@ -114,7 +138,10 @@ function findListStart(lines: string[], anchorIndex: number): number {
   return start + 1
 }
 
-function findParagraphStart(lines: string[], anchorIndex: number): number {
+const findParagraphStart = (
+  lines: string[],
+  anchorIndex: number,
+): number => {
   let start = anchorIndex
   for (let i = anchorIndex - 1; i >= 0; i--) {
     if ((lines[i] as string).trim() === '') {

@@ -6,7 +6,7 @@ import { FileSystemService } from "./src/filesystem.js";
 import { FrontmatterHandler } from "./src/frontmatter.js";
 import { PathFilter } from "./src/pathfilter.js";
 import { SearchService } from "./src/search.js";
-import { extractSection } from "./src/fragment/index.js";
+import { extractFragment } from "./src/from-package-renoirb-obsidian-markdown-utils/index.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -375,18 +375,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }
             },
             {
-                name: "resolve_ref",
-                description: "Resolve an Obsidian-style reference by basename, optionally extracting a specific section. Searches the entire vault for an exact basename match (like [[Document Name]]). With a fragment, returns only the matching section (#Heading or #^block-id). Content is returned bare — ready for direct use in context.",
+                name: "wiki_link",
+                description: "Read an Obsidian wiki link. Accepts the same syntax as Obsidian: [[Document Name]], [[Document Name#Heading]], [[Document Name#^block-id]], [[Document Name|Display Text]]. Searches the vault for an exact basename match. With a fragment, returns only the matching section. Content is returned bare — ready for direct use in context.",
                 inputSchema: {
                     type: "object",
                     properties: {
                         ref: {
                             type: "string",
-                            description: "Document basename (e.g. 'LLM-Context-Programming-Focus'). The .md extension is optional. Brackets are stripped if present."
+                            description: "Obsidian basename — what goes inside [[ ]]. e.g. 'LLM-Context-Programming-Focus'. Brackets and display text (|...) are stripped if present. The .md extension is always appended (never include it)."
                         },
                         fragment: {
                             type: "string",
-                            description: "Optional heading or block-id to extract (e.g. '#Summary', '#^blockId', 'Opportunistic Legibility in Changed Chunks'). Returns only that section instead of the full document."
+                            description: "Optional fragment: heading text (e.g. 'Summary') or block-id (e.g. '^blockId'). Leading # is optional. Returns only that section instead of the full document."
                         },
                         prettyPrint: {
                             type: "boolean",
@@ -631,10 +631,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     ]
                 };
             }
-            case "resolve_ref": {
-                // Strip [[ ]] brackets if present
-                let ref = (trimmedArgs.ref || '').replace(/^\[\[/, '').replace(/\]\]$/, '').trim();
-                // Find the file by basename
+            case "wiki_link": {
+                // Strip [[ ]] brackets and |display text if present
+                let ref = (trimmedArgs.ref || '')
+                    .replace(/^\[\[/, '')
+                    .replace(/\]\]$/, '')
+                    .replace(/\|.*$/, '')
+                    .trim();
+                // Find the file by ObsidianBasename (always appends .md)
                 const resolvedPath = await fileSystem.findByBasename(ref);
                 // Read the note
                 const note = await fileSystem.readNote(resolvedPath);
@@ -654,8 +658,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         ]
                     };
                 }
-                // Extract the requested section
-                const extraction = extractSection(note.content, trimmedArgs.fragment);
+                // Extract the requested fragment
+                const extraction = extractFragment(note.content, trimmedArgs.fragment);
                 if (!extraction.found) {
                     return {
                         content: [

@@ -55,19 +55,18 @@ describe('scanHeadings', () => {
 
   it('# Title starts at line 1, section extends to end (no other h1 to terminate it)', () => {
     const title = headings[0]
-    expect(title.text).toBe('Title')
-    expect(title.level).toBe(1)
-    expect(title.startLine).toBe(1)
-    // h1 only terminates at another h1 — h2 is a lower level, not higher
-    expect(title.endLine).toBe(lines.length)
+    expect(title!.text).toBe('Title')
+    expect(title!.level).toBe(1)
+    expect(title!.startLine).toBe(1)
+    expect(title!.endLine).toBe(lines.length)
   })
 
   it('## Summary section includes ### Sub-section content', () => {
     const summary = headings[1]
-    expect(summary.text).toBe('Summary')
-    expect(summary.level).toBe(2)
-    expect(summary.startLine).toBe(5)
-    expect(summary.endLine).toBe(12)
+    expect(summary!.text).toBe('Summary')
+    expect(summary!.level).toBe(2)
+    expect(summary!.startLine).toBe(5)
+    expect(summary!.endLine).toBe(12)
   })
 
   it('#### Opportunistic Legibility section ends before #### Function Naming', () => {
@@ -85,8 +84,8 @@ describe('scanHeadings', () => {
 
   it('last heading section extends to end of content', () => {
     const last = headings[headings.length - 1]
-    expect(last.text).toBe('Function Naming')
-    expect(last.endLine).toBe(FIXTURE.split('\n').length)
+    expect(last!.text).toBe('Function Naming')
+    expect(last!.endLine).toBe(FIXTURE.split('\n').length)
   })
 
   it('returns empty array for empty content', () => {

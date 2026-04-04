@@ -5,15 +5,25 @@ const TRAILING_HASHES_RE = /\s+#+\s*$/
 
 /**
  * Scan markdown content for headings and compute their section boundaries.
+ *
  * Each heading's section extends from its line to the line before the next
  * heading of equal or higher level (or end of content).
+ * Sub-headings within a section are included in the parent's range.
+ * Lines are 1-indexed.
+ *
+ * @param markdownText - Full markdown content (without frontmatter)
+ * @returns Array of heading info with section boundaries, in document order
+ *
+ * @see {@link HeadingInfo}
  */
-export function scanHeadings(content: string): HeadingInfo[] {
-  if (!content.trim()) {
+export const scanHeadings = (
+  markdownText: string,
+): HeadingInfo[] => {
+  if (!markdownText.trim()) {
     return []
   }
 
-  const lines = content.split('\n')
+  const lines = markdownText.split('\n')
   const headings: HeadingInfo[] = []
 
   for (let i = 0; i < lines.length; i++) {
