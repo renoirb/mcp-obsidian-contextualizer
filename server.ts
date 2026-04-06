@@ -11,6 +11,12 @@ import { FrontmatterHandler } from "./src/frontmatter.js";
 import { PathFilter } from "./src/pathfilter.js";
 import { SearchService } from "./src/search.js";
 import { parseWikiLink, resolveWikiLink } from "./src/from-package-renoirb-obsidian-markdown-utils/index.js";
+import { VaultIndexerClient } from "./src/gateway-vault-indexer-py/index.js";
+import {
+  vaultIndexerToolDefs,
+  vaultIndexerToolNames,
+  handleVaultIndexerTool,
+} from "./src/gateway-vault-indexer-py/tools.js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -65,6 +71,15 @@ const pathFilter = new PathFilter();
 const frontmatterHandler = new FrontmatterHandler();
 const fileSystem = new FileSystemService(vaultPath, pathFilter, frontmatterHandler);
 const searchService = new SearchService(vaultPath, pathFilter);
+
+// Vault-indexer gateway (optional — tools degrade gracefully if unreachable)
+const vaultIndexerBaseUrl =
+  process.env.VAULT_INDEXER_URL || "http://127.0.0.1:7421";
+const vaultIndexerClient = new VaultIndexerClient({
+  baseUrl: vaultIndexerBaseUrl,
+  vaultPath,
+  configPath: process.env.VAULT_INDEXER_CONFIG,
+});
 
 const server = new Server({
   name: "mcp-obsidian",
@@ -409,7 +424,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["ref"]
         }
-      }
+      },
+      // Vault-indexer gateway tools
+      ...vaultIndexerToolDefs,
     ]
   };
 });
@@ -718,6 +735,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       default:
+        // Delegate to vault-indexer gateway if it's one of those tools
+        if (vaultIndexerToolNames.has(name)) {
+          return handleVaultIndexerTool(name, trimmedArgs, vaultIndexerClient);
+        }
         throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
