@@ -45,8 +45,28 @@ Every folder in the vault contains two sibling files:
 **Example** — for a vault rooted at `~/Documents/Obsidian/SomeVaultName/`:
 
 At the vault root:
-- `README.md` (with `redirect: "[[SomeVaultName]]"` frontmatter and `![[SomeVaultName]]` transclusion)
-- `SomeVaultName.md` (the main document)
+- `README.md`:
+  ```markdown
+  ---
+  redirect: "[[SomeVaultName]]"
+  ---
+
+  ![[SomeVaultName]]
+  ```
+- `SomeVaultName.md`:
+  ```markdown
+  ---
+  title: "Some Vault Name"
+  ---
+
+  # Some Vault Name
+
+  This is my personal Obsidian Vault.
+
+  ## Shared Between Home And Work
+
+  The files in this vault stored in the path `Sharing-Between-Contexts/Between-Home-And-Work/` are intended to be used for both at home and work.
+  ```
 
 This pattern repeats at every level:
 - `Sharing-Between-Contexts/README.md`
@@ -195,6 +215,11 @@ An MCP tool that automates creating new folder structures following the vault fo
 - `Project-Alpha/Project-Alpha.md` — the main document, with frontmatter and a heading ready to fill in
 - `Project-Alpha/README.md` — the navigation shim with `redirect` frontmatter and transclusion of the main document
 
+**Use case:** An AI client can respond to a request like _"Let's have a sub-folder in the vault where we regroup all files describing X and we can share them for the project at work"_ by:
+1. Listing existing places to find the right parent folder
+2. Scaffolding the new folder with the convention files
+3. Updating the parent's main document to reference the new sub-folder
+
 #### OBS-010: Tag-based file discovery
 
 An MCP tool that queries files by frontmatter tag and returns their paths and metadata. This extends the existing `search_notes` and `manage_tags` tools with tag-specific filtering.
@@ -209,7 +234,12 @@ The MCP itself does not sync files between machines — that's a separate concer
 
 The MCP should be able to tell the LLM **which tags are allowed and what each one means**. Rather than letting the LLM invent arbitrary tags, the server exposes a governed vocabulary.
 
-The source of truth is **a document in the vault itself**. The MCP looks for a well-known document name, reads the relevant sections, and serves them as-is. No external config files, no server-side configuration — the vault documents its own conventions, and the MCP reads them.
+The source of truth is **a document in the vault itself**. Documents like [[TAGGING-CONVENTION-PAI-OBSIDIAN]] and [[Agentic-Writing-Contexts/Shared-Between-Home-And-Work/PAI-OBSIDIAN-BRIDGING]] already exist (on the work machine) with this kind of content. The MCP looks for a well-known document name, reads the relevant sections, and serves them as-is. No external config files, no server-side configuration — the vault documents its own conventions, and the MCP reads them. This self-referential pattern (the system describes itself using its own medium) is a recurring strategy — see [[TELOS-Challenge-C0]], [[Meta-Toolsmith]].
+
+**Example tags** (there is more documentation scattered around the vault):
+- `resource/llm/context-engineering/exportable` — portable across LLM contexts
+- `resource/sharing/between-home-and-work` — should be available on both machines
+- `ai-writable` — MCP is allowed to modify this file
 
 The MCP could also report tags found in the vault that aren't in the manifest document — surfacing "wild" tags that haven't been formally documented yet.
 
